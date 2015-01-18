@@ -1,96 +1,97 @@
-var express = require('express');
+﻿var express = require('express');
 var app = express();
 
-var people = [];
-function toRadians(degree)
-{
-    return degree/180*3.1415;
-}
+var mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/test');
 
-function distance(lat1,lon1,lat2,lon2)
-            {
-                var R = 6371.0; //km
+var db = mongoose.connection;
+db.on('error', console.error.bind(console, 'connection error:'));
+db.once('open', function (callback) {
+    console.log("connected to mongo")
+  // yay!
+});
+
+//var Schema = mongoose.Schema;
+var Schema = mongoose.Schema;
+
+var peopleSchema = new Schema({
+    name: String,
+    lat: Number,
+    lon: Number,
+    deviceID: String,
+    time: Number
+
+})
+
+var Person = mongoose.model('people', peopleSchema);
 
 
-                var o1 = toRadians(lat1);
-                var o2 = toRadians(lat2);
-                var ao = toRadians((lat2-lat1));
-                var ay = toRadians((lon2-lon1));
+app.get('/clear', function (req, res) {
+    Person.remove({}, function (err) {
+        res.send(err || "done");
+    });
+    
+});
+//
 
-                var a = Math.sin(ao/2) * Math.sin(ao/2) +
-                Math.cos(o1) * Math.cos(o2) *
-                Math.sin(ay/2) * Math.sin(ay/2);
-                var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+app.get('/update', function (req, res) {
+    
 
-                var d = R * c;
-                console.log("lat1 " + lat1 + "lat2 " + lat2 + "lon1 " + lon1 +"lon2 " + lon2);
-                console.log("d " + d);
-                if(d <= 2.0)
-                {
-                    return true;
-                }
-                return false;
-
-            }
-app.get('/update', function(req, res) {
     console.log("request");
     var lat = parseFloat(req.query.lat);
     var lon = parseFloat(req.query.lon);
     var name = req.query.name;
     var id = req.query.deviceid;
     var time = new Date().getTime();
-
-    var foundPerson = false;
-    for(var i = 0; i < people.length; i++) {
-        var person = people[i];
-        if (person.id == id) {
-            foundPerson = true;
-            //update a person
-            person.name = name;
-            person.lat = lat;
-            person.lon = lon;
-            person.time = time
-        };
-    }
-    if (!foundPerson) {
-        var newPerson = {
-            id : id,
-            name: name,
-            lat: lat,
-            lon: lon,
-            time: time
+    
+    Person.findOne({ deviceID: req.query.deviceid }).exec(function (err, person) {
+        console.log(person);
+        if (err) return;
+        if (person == null) {
+            person = new Person();
         }
-        people.push(newPerson);
-    }
-    var milePeople = [];
-    for(var i = 0; i < people.length; i++) 
-    {
-        console.log(people[i].name + " " + name)
-        if( distance(lat, lon, people[i].lat, people[i].lon) )
-        {
-            milePeople.push(people[i]);
+        person.lat = lat;
+        person.lon = lon;
+        person.name = name;
+        person.deviceID = id;
+        person.time = time;
+        person.save();
+    });
+    var d = .01;
+    Person.find()
+    .where('lat').gt(lat - d).lt(lat + d)
+    .where('lon').gt(lon - d).lt(lon + d)
+    .exec(function (err, people) {
+        if (!err) {
+            var a = people.map(dbtohttpparams)
+            res.send(a);
         }
-    }    
-    res.send(milePeople)
-
+    });
+    
 });
 
-setInterval(
-function filter()
+function dbtohttpparams(dbperson)
 {
-    console.log("filter");
-    for(var i = 0; i < people.length; i++)
-    {
-        var person = people[i];
-        if(person.time + 10000 < new Date().getTime())
-        {
-            console.log("Removing " + person.name);
-            people.splice(i, 1);
-        }
+    return {
+        lat: dbperson.lat, lon: dbperson.lon,
+        name: dbperson.name, id: dbperson.deviceID
     }
-},
+}
+
+
+setInterval(
+    function filter() {
+        Person.remove()
+        .where('time').lt(new Date().getTime() - 10)
+        .exec(function (err){
+            if (err) {
+                return handleError(err);
+            }
+            
+        })
+        },
 10000);
 
 
 
-app.listen(80);
+app.listen(5858);
