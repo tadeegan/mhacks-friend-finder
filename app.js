@@ -74,7 +74,7 @@ app.get('/update', function(req, res) {
     res.send(milePeople)
 
 });
-/*
+
 setInterval(
 function filter()
 {
@@ -90,7 +90,7 @@ function filter()
     }
 },
 10000);
-*/
+
 
 
 app.listen(9000);
